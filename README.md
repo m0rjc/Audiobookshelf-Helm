@@ -86,7 +86,7 @@ The web client was found to be perfectly adequate for listening at home on PC or
 
 Apple devices such as IPhones require mDNS setup to resolve hosts in the local domain. 
 
-Install acahi-utils:
+Install avahi-utils:
 
 ```
 sudo apt update && sudo apt install avahi-utils -y
