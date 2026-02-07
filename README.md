@@ -23,6 +23,12 @@ A Helm chart for deploying [Audiobookshelf](https://www.audiobookshelf.org/) —
   sudo chown 10500:10500 /var/lib/audiobookshelf/config /var/lib/audiobookshelf/metadata
   ```
 
+The UID and GID were chosen manually. I created entries in `/etc/passwd` and `/etc/group` for documentation
+purposes on my system, rather than have anonymous users and groups. You
+may wish to accept your Linux distributions defaulting when creating new system accounts. My system warned that
+10500 was outside the `SYS_UID_MAX` range. If you use different IDs then set your values in `values.yaml`.
+
+
 ## Installation
 
 ```bash
