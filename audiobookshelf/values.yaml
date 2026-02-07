@@ -36,7 +36,7 @@ ingress:
 networkPolicy:
   enabled: true
   ingressNamespace: ingress
-  allowMetadataFetching: false
+  allowMetadataFetching: true
 
 securityContext:
   runAsUser: 10500
