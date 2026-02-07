@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "audiobookshelf.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "audiobookshelf.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "audiobookshelf.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "audiobookshelf.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+      containers:
+        - name: audiobookshelf
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: PORT
+              value: {{ .Values.containerPort | quote }}
+            - name: CONFIG_PATH
+              value: /config
+            - name: METADATA_PATH
+              value: /metadata
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: audiobooks
+              mountPath: /audiobooks
+              readOnly: true
+            - name: config
+              mountPath: /config
+            - name: metadata
+              mountPath: /metadata
+      volumes:
+        - name: audiobooks
+          hostPath:
+            path: {{ .Values.audiobooks.hostPath }}
+            type: Directory
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "audiobookshelf.fullname" . }}-config
+        - name: metadata
+          persistentVolumeClaim:
+            claimName: {{ include "audiobookshelf.fullname" . }}-metadata

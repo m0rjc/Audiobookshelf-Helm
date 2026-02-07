@@ -1,0 +1,43 @@
+# Audiobookshelf Helm Chart Values
+#
+# Pre-deployment steps:
+#   sudo mkdir -p /var/lib/audiobookshelf/config /var/lib/audiobookshelf/metadata
+#   microk8s enable dns ingress
+
+namespace: audiobookshelf
+
+image:
+  repository: ghcr.io/advplyr/audiobookshelf
+  tag: latest
+  pullPolicy: IfNotPresent
+
+containerPort: 13378
+
+timezone: Europe/London
+
+audiobooks:
+  hostPath: /srv/audiobooks
+
+persistence:
+  config:
+    hostPath: /var/lib/audiobookshelf/config
+  metadata:
+    hostPath: /var/lib/audiobookshelf/metadata
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  hostname: audiobookshelf.local
+  className: nginx
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress
+  allowMetadataFetching: false
+
+securityContext:
+  runAsUser: 10500
+  runAsGroup: 10500

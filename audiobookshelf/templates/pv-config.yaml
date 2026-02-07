@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "audiobookshelf.fullname" . }}-config
+  labels:
+    {{- include "audiobookshelf.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: {{ .Values.persistence.config.hostPath }}
+    type: DirectoryOrCreate
+  claimRef:
+    namespace: {{ .Values.namespace }}
+    name: {{ include "audiobookshelf.fullname" . }}-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "audiobookshelf.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "audiobookshelf.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: {{ include "audiobookshelf.fullname" . }}-config
