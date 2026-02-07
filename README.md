@@ -66,10 +66,14 @@ The chart applies a restrictive network policy by default:
 - **DNS** permitted to `kube-system` for service discovery
 - **Internet egress** disabled by default — if your media files already contain embedded metadata and cover art, no outbound internet access is needed. Enable `networkPolicy.allowMetadataFetching` if you want Audiobookshelf to fetch cover art and metadata from online sources (Google Books, Audible, OpenLibrary, etc.). When enabled, this permits outbound HTTP/HTTPS (ports 80 and 443) to **all public IPs** (private ranges are excluded). This is broader than strictly necessary, but these metadata sources rely on CDNs with changing IPs, making IP-level restrictions impractical. For tighter control, DNS-based egress policies (supported by Cilium but not Calico) could restrict traffic to specific hostnames
 
-> **Note:** Network policies require a CNI plugin that supports enforcement (e.g., Calico or Cilium). The default microk8s CNI does **not** enforce network policies — the resources will exist but have no effect. To enable enforcement on microk8s, run:
-> ```bash
-> microk8s enable network
-> ```
+> **Note:** Network policies require a CNI plugin that supports enforcement (e.g., Calico or Cilium). Claude says: "The default microk8s CNI does **not** enforce network policies — the resources will exist but have no effect.". My cluster is running Calico, which documentation suggests is default.
+
+## Use in a Unifi Network with UDM Pro
+
+My setup is a Unifi UDM Pro network. My Kubernetes node already has a static IP address assigned. All I had to do was add a new DNS entry for `audiobookshelf.local` resolving to that static IP. This makes
+the audiobooks accessible from my home network. There is no access from outside my network.
+
+The web client was found to be perfectly adequate for listening at home on PC or mobile device.
 
 ## Architecture
 
