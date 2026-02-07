@@ -81,6 +81,58 @@ the audiobooks accessible from my home network. There is no access from outside 
 
 The web client was found to be perfectly adequate for listening at home on PC or mobile device.
 
+
+## The .local domain and Apple clients
+
+Apple devices such as IPhones require mDNS setup to resolve hosts in the local domain. 
+
+Install acahi-utils:
+
+```
+sudo apt update && sudo apt install avahi-utils -y
+```
+
+Create `/etc/systemd/system/avahi-alias@.service` with the following content. The `@` in the filename allows the substitution trick later:
+
+```
+[Unit]
+Description=Publish %I as alias for %H.local via mDNS
+After=avahi-daemon.service
+Requires=avahi-daemon.service
+
+[Service]
+Type=simple
+# -a: Publish an address record
+# -R: No-reverse (prevents conflict with the main hostname)
+# The subshell fetches the current local IP dynamically
+ExecStart=/bin/bash -c "/usr/bin/avahi-publish -a -R %I $(ip route get 1 | awk '{print $7;exit}')"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload and enable the alias
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now avahi-alias@audiobookshelf.local.service
+```
+
+This can be checked using the `avahi-resolve` command, or normal networking tools if your system is set up to use mDNS in its name resolution (`/etc/nsswitch.conf`)
+
+```
+avahi-resolve -n audiobookshelf.local
+```
+
+To check systemd use
+
+```
+systemctl list-units --type=service "avahi-alias*"
+```
+
+
 ## Architecture
 
 ```
