@@ -7,15 +7,16 @@ A Helm chart for deploying [Audiobookshelf](https://www.audiobookshelf.org/) —
 - **Rootless deployment** — runs as non-root user (UID 10500) with all Linux capabilities dropped
 - **Network policies** — default-deny model with explicit allow rules for ingress and DNS
 - **Persistent storage** — separate volumes for config and metadata with retain policy
-- **Read-only media mount** — audiobook files mounted read-only from the host
+- **Configurable media mount** — audiobook files mounted from the host; read-only by default but can be set to read-write if you want to use the Audiobookshelf upload feature
 - **Health checks** — liveness and readiness probes on `/healthcheck`
 
 ## Prerequisites
 
-- microk8s with the `dns` and `ingress` addons enabled:
+- microk8s with the `dns`, `ingress`, and `metallb` addons enabled:
   ```bash
-  microk8s enable dns ingress
+  microk8s enable dns ingress metallb
   ```
+  When prompted, give metallb an IP range that is unused on your network and routable to the node (e.g. `192.168.100.1-192.168.100.64`).
 - Audiobook files available on the host (default: `/srv/audiobooks`)
 - Persistent storage directories created on the host:
   ```bash
@@ -33,7 +34,10 @@ may wish to accept your Linux distributions defaulting when creating new system 
 
 ```bash
 helm install audiobookshelf ./audiobookshelf
+kubectl apply -f ingress/metallb-service.yaml
 ```
+
+The second command creates a LoadBalancer service that gives the nginx ingress controller a stable IP from the metallb pool (see [Why metallb?](#why-metallb) below).
 
 ## Configuration
 
@@ -74,17 +78,27 @@ The chart applies a restrictive network policy by default:
 
 > **Note:** Network policies require a CNI plugin that supports enforcement (e.g., Calico or Cilium). Claude says: "The default microk8s CNI does **not** enforce network policies — the resources will exist but have no effect.". My cluster is running Calico, which documentation suggests is default.
 
+## Why metallb?
+
+The microk8s ingress addon runs as a DaemonSet and uses `hostPort` to expose ports 80 and 443 on the node. `hostPort` relies on iptables NAT rules set up by the CNI portmap plugin. However, my cluster runs Calico in **eBPF mode** (`bpfConnectTimeLoadBalancing: TCP`), which bypasses iptables entirely. The portmap rules are never applied, so `hostPort` silently does nothing and port 80 is unreachable on the node IP.
+
+metallb solves this by giving the ingress controller a proper LoadBalancer IP. The manifest in `ingress/metallb-service.yaml` creates a service that selects the ingress controller pods and requests a specific IP via the `metallb.universe.tf/loadBalancerIPs` annotation. metallb advertises this IP on the local network using L2 ARP, and Calico eBPF handles the service routing natively.
+
 ## Use in a Unifi Network with UDM Pro
 
-My setup is a Unifi UDM Pro network. My Kubernetes node already has a static IP address assigned. All I had to do was add a new DNS entry for `audiobookshelf.local` resolving to that static IP. This makes
-the audiobooks accessible from my home network. There is no access from outside my network.
+My setup is a Unifi UDM Pro network. The metallb IP pool (`192.168.100.0/24`) is on a different subnet from the Kubernetes node, so the Unifi router needs a static route to reach it:
 
-The web client was found to be perfectly adequate for listening at home on PC or mobile device.
+- **Destination:** `192.168.100.0/24`
+- **Next hop:** the static IP of the Kubernetes node (e.g. `192.168.1.234`)
+
+This is configured under Settings → Routing → Static Routes in the Unifi controller.
+
+There is no access from outside my network. The web client was found to be perfectly adequate for listening at home on PC or mobile device.
 
 
 ## The .local domain and Apple clients
 
-Apple devices such as IPhones require mDNS setup to resolve hosts in the local domain. 
+Apple devices such as iPhones use mDNS to resolve `.local` hostnames and will not use the Unifi DNS entries that work for other clients. Avahi on the Kubernetes node handles this by advertising the service via mDNS.
 
 Install avahi-utils:
 
@@ -104,8 +118,7 @@ Requires=avahi-daemon.service
 Type=simple
 # -a: Publish an address record
 # -R: No-reverse (prevents conflict with the main hostname)
-# The subshell fetches the current local IP dynamically
-ExecStart=/bin/bash -c "/usr/bin/avahi-publish -a -R %I $(ip route get 1 | awk '{print $7;exit}')"
+ExecStart=/usr/bin/avahi-publish -a -R %I 192.168.100.1
 Restart=always
 RestartSec=3
 
@@ -113,34 +126,49 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
-Reload and enable the alias
+The IP is hardcoded to the metallb LoadBalancer address rather than the node's host IP — this is important because port 80 is not reachable on the node IP directly (see [Why metallb?](#why-metallb)).
+
+Reload and enable the alias:
 
 ```
 sudo systemctl daemon-reload
 sudo systemctl enable --now avahi-alias@audiobookshelf.local.service
 ```
 
-This can be checked using the `avahi-resolve` command, or normal networking tools if your system is set up to use mDNS in its name resolution (`/etc/nsswitch.conf`)
+Verify it is working:
 
 ```
 avahi-resolve -n audiobookshelf.local
-```
-
-To check systemd use
-
-```
 systemctl list-units --type=service "avahi-alias*"
 ```
+
+### mDNS across subnets
+
+mDNS is link-local multicast and does not cross router boundaries. If your Apple devices are on a different network or VLAN from the Kubernetes node, you need to enable **mDNS reflection** (sometimes labelled "Device Discovery") in the Unifi network settings for each relevant network. This causes the Unifi router to relay mDNS traffic between subnets.
 
 
 ## Architecture
 
 ```
-Internet → Nginx Ingress → Service (:80) → Pod (:13378)
-                                              ├── /audiobooks  (host, read-only)
-                                              ├── /config      (PV, 1Gi)
-                                              └── /metadata    (PV, 5Gi)
+Client → Unifi router → metallb IP (192.168.100.1:80)
+                              │  (L2 ARP + static route for 192.168.100.0/24)
+                              ▼
+                     nginx-ingress-lb Service
+                              │  (LoadBalancer via metallb)
+                              ▼
+                     Nginx Ingress Controller
+                              │  (routes audiobookshelf.local → audiobookshelf service)
+                              ▼
+                     audiobookshelf Service (:80)
+                              │
+                              ▼
+                         Pod (:13378)
+                           ├── /audiobooks  (host path)
+                           ├── /config      (PV, 1Gi)
+                           └── /metadata    (PV, 5Gi)
 ```
+
+Apple clients resolve `audiobookshelf.local` via mDNS (avahi on the node), which points to the metallb IP.
 
 ## Uninstalling
 

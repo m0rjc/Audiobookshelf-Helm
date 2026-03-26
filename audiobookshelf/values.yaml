@@ -32,6 +32,7 @@ ingress:
   enabled: true
   hostname: audiobookshelf.local
   className: nginx
+  maxBodySize: "512M"
 
 networkPolicy:
   enabled: true

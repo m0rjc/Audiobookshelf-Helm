@@ -56,7 +56,6 @@ spec:
           volumeMounts:
             - name: audiobooks
               mountPath: /audiobooks
-              readOnly: true
             - name: config
               mountPath: /config
             - name: metadata

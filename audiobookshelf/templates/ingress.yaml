@@ -6,6 +6,8 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "audiobookshelf.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.ingress.maxBodySize | quote }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
